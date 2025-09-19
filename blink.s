@@ -8,7 +8,7 @@
 
 .section .isr_vector,"a",%progbits
 .word _estack
-.word reset
+.word reset + 1
 
 .section .text
 reset:

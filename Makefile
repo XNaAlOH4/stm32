@@ -1,4 +1,4 @@
 all:
-	arm-none-eabi-as -mcpu=cortex-m3 -mthumb button.s -o button.o
-	arm-none-eabi-ld -T stm32.ld button.o -o button.elf
-	arm-none-eabi-objcopy button.elf -O binary button.bin
+	arm-none-eabi-as -mcpu=cortex-m3 -mthumb adc.s -o adc.o
+	arm-none-eabi-ld -T stm32.ld adc.o -o adc.elf
+	arm-none-eabi-objcopy adc.elf -O binary adc.bin
