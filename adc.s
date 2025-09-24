@@ -14,10 +14,11 @@
 .equ GPIOB_IDR,		0x40010C08
 
 .equ RCC_CR,		0x40021000
+.equ RCC_CFGR,		0x40021004
 
 .section .isr_vector,"a",%progbits
 .word _estack
-.word reset
+.word reset+1
 
 .section .text
 reset:
@@ -40,18 +41,51 @@ reset:
 	@ Enable HSE
 	ldr r0, =RCC_CR
 	ldr r1, [r0]
-	orr r1, #(1<<16) @ enable HSE
+	orr r1, r1, #(1<<16) @ enable HSE
 	str r1, [r0]
-	
-	movs r2, #0x20
-wait: @ wait for 6 cycles of HSE to check if it is stable
-	subs r2, #1
-	bne wait
 
+waitHSE:
 	ldr r1, [r0]
-	and r2, r1, #(1<<17) @ Check if HSE Enabled
-	bne stop
+	tst r1, #(1<<17)
+	beq waitHSE
 
+	@ Set all clock config
+	ldr r0, =RCC_CFGR
+	ldr r1, [r0]
+	bic r1, r1, #(0xf<<18) @ clear PLLMUL
+	orr r1, r1, #(7<<18) @ PLLMUL x9, so SYSCLK is now 72MHz
+	orr r1, r1, #(1<<16) @ PLLSRC set to HSE
+	bic r1, r1, #(1<<17) @ PLLXTPRE don't divide HSE by 2
+	orr r1, r1, #(4<<8 ) @ APB1 /2 to limit PCLK1 to 36MHz
+	bic r1, r1, #(8<<4 ) @ AHB /1
+	bic r1, r1, #(4<<11) @ APB2 /1
+	orr r1, r1, #(2<<14) @ ADC /6 = 12MHz
+	str r1, [r0]
+
+	@ Enable PLL
+	ldr r0, =RCC_CR
+	ldr r1, [r0]
+	orr r1, r1, #(1<<24) @ enable PLL
+	str r1, [r0]
+
+waitPLL:
+	ldr r1, [r0]
+	tst r1, #(1<<25)
+	beq waitPLL
+
+	@ Set all clock config
+	ldr r0, =RCC_CFGR
+	bic r1, r1, #(3<<0 ) @ clear SW
+	orr r1, r1, #(2<<0 ) @ SW set to use PLL
+	str r1, [r0]
+
+waitSW:
+	ldr r1, [r0]
+	and r2, r1, #(3<<2)
+	cmp r2, #(2<<2)
+	bne waitSW
+
+	
 	@ Configure PB9 as input with pull-down
 	ldr r0, =GPIOB_CRH
 	movs r1, #(0x1 << 7)
@@ -63,26 +97,37 @@ wait: @ wait for 6 cycles of HSE to check if it is stable
 	str r1, [r0]
 
 toggleLED:
-	ldr r0, =GPIOB_IDR
-	ldr r1, [r0]
-	and r2, r1, #(1<<9)
-	lsl r1, r2, #4
-	ldr r0, =GPIOC_ODR
-	str r1, [r0]
-
-	movs r2, #0x20
-	lsls r2, r2, #15
-
-delay:
-	subs r2, #1
-	bne delay
-
-	b toggleLED
-
-stop:
 	ldr r0, =GPIOC_ODR
 	ldr r1, [r0]
 	eor r1, #(1<<13)
 	str r1, [r0]
-stop_actual:
-	b stop_actual
+
+	bl delay_500ms
+	bl delay_500ms
+	bl delay_500ms
+	bl delay_500ms
+	b toggleLED
+
+.equ SYST_CSR, 0xE000E010
+.equ SYST_RVR, 0xE000E014
+.equ SYST_CVR, 0xE000E018
+
+delay_500ms:
+	ldr r0, =SYST_RVR
+	ldr r1, =36000000-1
+	str r1, [r0]
+
+	ldr r0, =SYST_CVR
+	movs r1, #0
+	str r1, [r0]
+
+	ldr r0, =SYST_CSR
+	movs r1, #5
+	str r1, [r0]
+
+wait_flag:
+	ldr r1, [r0]
+	tst r1, #(1<<16)
+	beq wait_flag
+
+	bx lr
